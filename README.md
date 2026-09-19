@@ -1,36 +1,76 @@
-# GuardianX - Flutter Mobile Application (v3.0)
+<div align="center">
 
-This is the complete, official **Flutter** project ready to open and run in **Android Studio**.
+# 🛡️ GuardianX 2.0
+### Autonomous AI Personal Defense & Tactical Safety Ecosystem
 
-## 🚀 How to Open in Android Studio
+[![Flutter](https://img.shields.io/badge/Flutter-3.19+-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.3+-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
+[![WebRTC](https://img.shields.io/badge/WebRTC-Peer_to_Peer-333333?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org)
+[![Android](https://img.shields.io/badge/Android-SDK_23+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-1. Open **Android Studio**.
-2. Click **File -> Open...** (or "Open" on the welcome screen).
-3. Select this `flutter_project` directory and click **OK**.
-4. Android Studio will recognize it as a Flutter/Dart project.
-5. In the terminal or prompt, run:
-   ```bash
-   flutter pub get
-   ```
-6. Connect your physical Android phone (with USB Debugging enabled) or start an Android Emulator.
-7. Click the green **Run ▶️** button in the top toolbar!
+**GuardianX 2.0** is an intelligent, offline-first personal security application that bridges proactive acoustic AI threat detection, hardware-accelerated WebRTC live-streaming, and automated multi-tier emergency dispatch.
 
-## 📦 Generating Release APK
+[Explore Features](#-key-capabilities) • [Architecture](#-system-architecture) • [Quick Start](#-getting-started) • [APK Build](#-generating-release-apk)
 
-To create an installable `.apk` file for Android phones:
-```bash
-flutter build apk --release
-```
-The APK will be generated at:
-`build/app/outputs/flutter-apk/app-release.apk`
+</div>
 
-## 🛠️ Project Structure
-- `lib/main.dart` - Entry point, Cinematic Splash Screen with Ken Burns effect, and Auth.
-- `lib/host_screen.dart` - Host broadcast room, audio/video live indicator, camera flip.
-- `lib/viewer_screen.dart` - Remote WebRTC viewer with optical zoom, night vision, torch, brightness.
-- `lib/ai_screen.dart` & `ai_controller.dart` - AI Threat Radar, Safety Ear (acoustic voice monitor).
-- `lib/navigation_screen.dart` - Safe GPS navigation & safe havens routing.
-- `lib/otp_screen.dart` - 2FA OTP verification with demo code fallback (`1234`).
-- `lib/fake_call_screen.dart` - Audio caller simulator.
-- `lib/VaultScreen.dart` - Forensic evidence vault.
-- `android/` - Full Android configuration with Gradle 8.2, Kotlin 1.9.22, minSdk 23, and all camera/audio/location permissions.
+---
+
+## 📌 The Problem vs. The Solution
+
+* **Traditional Panic Buttons Fail Under Duress:** Unlocking a phone, finding an app, and dialing 911 takes 20–40 critical seconds during an assault.
+* **GuardianX 2.0 Autonomous Defense:** A triple-tap locked trigger, background acoustic scream analysis, tactical voice deterrence, and instant real-time telemetry dispatch to trusted guardians.
+
+---
+
+## ⚡ Key Capabilities
+
+### 🧠 1. AI Defense Layer
+* **🎧 Safety Ear (Acoustic Anomaly Detection):** Monitors background microphone amplitude (`dBFS`). Automatically triggers threat alarms when high-decibel screams, glass breaks, or struggle sounds are detected.
+* **📡 Smart Safety Radar:** Analyzes real-time GPS coordinates and diurnal hazard metrics (night vs. daylight risk corridors) to score route safety in real-time.
+* **👁️ Visual Guard:** Camera frame intake pipeline designed for real-time weapon and follower detection.
+* **📞 Tactical Guardian Call (TTS Deterrent):** Simulates an incoming rescue call with dynamic Text-to-Speech audio and haptics to project presence:
+  > *"Hey, I'm just around the corner. I can see you on the GPS with the security team. Stay right there on the line."*
+
+---
+
+### 🚨 2. Multi-Tiered SOS Engine
+| Tier | Action | Protocol Triggered |
+| :--- | :--- | :--- |
+| **Level 1 (Check-In)** | Single Tap | Sends silent coordinate ping to emergency contacts. |
+| **Level 2 (Caution)** | Double Tap | Broadcasts live GPS tracking link + SMS alert. |
+| **Level 3 (Emergency)** | Long Press / Triple-Tap | Arms full defense: WebRTC live stream, background audio recording, camera video capture, WhatsApp group broadcast, and local Evidence Vault preservation. |
+
+---
+
+### 📹 3. Peer-to-Peer WebRTC Live Streaming
+* **Zero-Latency Video:** Streams encrypted camera feed over WebRTC to trusted viewers via peer room codes.
+* **Remote Tactical Viewer:** Remote guardians can toggle flashlights, zoom in optically, adjust brightness, and enable night-vision mode on the victim's device remotely.
+
+---
+
+### 🗄️ 4. Encrypted Evidence Vault
+* **Forensic-Grade Capture:** Timestamped audio (`AUD_*.m4a`) and video (`VID_*.mp4`) evidence are recorded locally to secure app-isolated storage.
+* **Offline Resilience:** Evidence is saved immediately to disk even if cellular network coverage is lost during an emergency.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│                   GUARDIANX CLIENT (FLUTTER)             │
+├───────────────────┬───────────────────┬──────────────────┤
+│    AI SENSORS     │   SOS CONTROLLER  │    WEBRTC ENGINE │
+│  • Record dBFS    │  • Multi-Tier L1-3│  • Camera Stream │
+│  • Geolocator GPS │  • Auto-SMS Dispatch • Remote Control│
+│  • TTS Deterrent  │  • WhatsApp Bridge│  • Low-Latency P2P
+└─────────┬─────────┴─────────┬─────────┴─────────┬────────┘
+          │                   │                   │
+          ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│  EVIDENCE VAULT  │ │ TELEPHONY/SMS    │ │ SOCKET.IO RELAY  │
+│ Local Encrypted  │ │ Cellular Network │ │ Signaling Server │
+│ Offline Storage  │ │ Emergency Pings  │ │ Remote Viewer Hub│
+└──────────────────┘ └──────────────────┘ └──────────────────┘
