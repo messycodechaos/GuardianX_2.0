@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -36,6 +37,19 @@ class ThreatConfig {
   );
 }
 
+/// Structured response result for starting Safety Ear
+class SafetyEarStartResult {
+  final bool success;
+  final bool isPermanentlyDenied;
+  final String errorMessage;
+
+  SafetyEarStartResult({
+    required this.success,
+    this.isPermanentlyDenied = false,
+    this.errorMessage = '',
+  });
+}
+
 class AIController {
   static final AIController _instance = AIController._internal();
   factory AIController() => _instance;
@@ -63,12 +77,28 @@ class AIController {
   String defaultEscalationLevel = 'lvl3'; // Strictly 'lvl1', 'lvl2', or 'lvl3' only
 
   // Audio Recorder & Temporal Analysis
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  AudioRecorder? _audioRecorder;
   Timer? _acousticTimer;
   double currentDecibels = -55.0;
   final List<double> _recentDecibelReadings = [];
   int _consecutiveHighDecibelFrames = 0;
   int audioSampleCount = 0;
+
+  /// Helper to safely reset and cleanly re-instantiate AudioRecorder
+  Future<AudioRecorder> _getFreshAudioRecorder() async {
+    try {
+      if (_audioRecorder != null) {
+        if (await _audioRecorder!.isRecording()) {
+          await _audioRecorder!.stop();
+        }
+        await _audioRecorder!.dispose();
+      }
+    } catch (e) {
+      debugPrint("Warning during recorder cleanup: $e");
+    }
+    _audioRecorder = AudioRecorder();
+    return _audioRecorder!;
+  }
 
   // Temporal Filtering & Deduplication
   final Map<String, DateTime> _recentDetections = {};
@@ -97,36 +127,66 @@ class AIController {
   // ─────────────────────────────────────────────────────────────
   // 1. SAFETY EAR — REAL-TIME VOICE MONITOR (FIXED & RESPONSIVE)
   // ─────────────────────────────────────────────────────────────
-  Future<bool> startAcousticMonitor({
+  Future<SafetyEarStartResult> startAcousticMonitor({
     required Function(IncidentRecord incident) onIncidentSaved,
     required Function(String error, IncidentRecord? pendingIncident) onStorageFailed,
     Function(double decibels)? onDecibelUpdate,
   }) async {
-    isVoiceMonitorActive = true;
     try {
-      // 1. Check microphone permission via record package and permission_handler
-      bool hasPerm = await _audioRecorder.hasPermission();
-      if (!hasPerm) {
-        var status = await Permission.microphone.request();
+      // 1. Cleanly instantiate fresh AudioRecorder
+      final recorder = await _getFreshAudioRecorder();
+
+      // 2. Comprehensive Permission Check (Handling Android 11-14 & Settings redirects)
+      if (!kIsWeb) {
+        var status = await Permission.microphone.status;
+        if (!status.isGranted) {
+          status = await Permission.microphone.request();
+        }
+
+        if (status.isPermanentlyDenied) {
+          isVoiceMonitorActive = false;
+          return SafetyEarStartResult(
+            success: false,
+            isPermanentlyDenied: true,
+            errorMessage: "Microphone permission is permanently denied. Please allow it in App Settings.",
+          );
+        }
+
         if (!status.isGranted) {
           isVoiceMonitorActive = false;
-          return false;
+          return SafetyEarStartResult(
+            success: false,
+            errorMessage: "Microphone permission is required for Safety Ear to listen for distress cues.",
+          );
         }
       }
 
-      final tempDir = await getTemporaryDirectory();
-      final tempAudioPath = '${tempDir.path}/ai_acoustic_monitor.m4a';
+      // Also verify via the record plugin's native channel
+      final hasPerm = await recorder.hasPermission();
+      if (!hasPerm) {
+        isVoiceMonitorActive = false;
+        return SafetyEarStartResult(
+          success: false,
+          errorMessage: "Microphone recording permission was not granted by the system.",
+        );
+      }
 
-      // Ensure previous session is closed cleanly
-      try {
-        if (await _audioRecorder.isRecording()) {
-          await _audioRecorder.stop();
+      // 3. Safe Path Setup & File Lock Avoidance
+      String tempAudioPath = '';
+      if (!kIsWeb) {
+        final tempDir = await getTemporaryDirectory();
+        tempAudioPath = '${tempDir.path}/gx_ear_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+        final staleFile = File(tempAudioPath);
+        if (staleFile.existsSync()) {
+          try { staleFile.deleteSync(); } catch (_) {}
         }
-      } catch (_) {}
+      }
 
-      // Start recording with standard 44100Hz AAC
+      // 4. Start Recording with device-compatible configuration
+      bool started = false;
       try {
-        await _audioRecorder.start(
+        await recorder.start(
           const RecordConfig(
             encoder: AudioEncoder.aacLc,
             sampleRate: 44100,
@@ -134,15 +194,35 @@ class AIController {
           ),
           path: tempAudioPath,
         );
-      } catch (startErr) {
-        debugPrint("AAC start error, falling back to wav: $startErr");
-        final wavPath = '${tempDir.path}/ai_acoustic_monitor.wav';
-        await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 44100),
-          path: wavPath,
+        started = true;
+      } catch (aacError) {
+        debugPrint("Standard AAC start failed ($aacError), falling back to platform default RecordConfig...");
+        try {
+          // Fallback to default platform config (avoids WAV on Android which throws unsupported errors)
+          await recorder.start(
+            const RecordConfig(),
+            path: tempAudioPath,
+          );
+          started = true;
+        } catch (fallbackError) {
+          debugPrint("Platform default record start failed: $fallbackError");
+          isVoiceMonitorActive = false;
+          return SafetyEarStartResult(
+            success: false,
+            errorMessage: "Unable to start microphone hardware: $fallbackError",
+          );
+        }
+      }
+
+      if (!started) {
+        isVoiceMonitorActive = false;
+        return SafetyEarStartResult(
+          success: false,
+          errorMessage: "Microphone recording failed to initialize.",
         );
       }
 
+      isVoiceMonitorActive = true;
       _recentDecibelReadings.clear();
       _consecutiveHighDecibelFrames = 0;
       audioSampleCount = 0;
@@ -151,14 +231,20 @@ class AIController {
 
       _acousticTimer?.cancel();
       _acousticTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-        if (!isVoiceMonitorActive) {
+        if (!isVoiceMonitorActive || _audioRecorder == null) {
           timer.cancel();
-          try { await _audioRecorder.stop(); } catch (_) {}
+          try {
+            if (_audioRecorder != null && await _audioRecorder!.isRecording()) {
+              await _audioRecorder!.stop();
+            }
+          } catch (_) {}
           return;
         }
 
         try {
-          final amp = await _audioRecorder.getAmplitude();
+          if (!await _audioRecorder!.isRecording()) return;
+
+          final amp = await _audioRecorder!.getAmplitude();
           double db = amp.current;
 
           if (db.isInfinite || db.isNaN || db < -100.0) {
@@ -177,7 +263,7 @@ class AIController {
           final screamConfig = categoryConfigs[ThreatCategory.screaming]!;
           final glassConfig = categoryConfigs[ThreatCategory.glassBreaking]!;
 
-          // Responsive volume threshold: shouting, clapping or screams > -25 dBFS
+          // High decibel threshold: shouting, clapping or screams > -25 dBFS
           if (db > -25.0) {
             _consecutiveHighDecibelFrames++;
           } else {
@@ -204,7 +290,7 @@ class AIController {
               _consecutiveHighDecibelFrames = 0;
             }
           }
-          // Glass breaking / violent transient impact condition
+          // Glass breaking / transient impact condition
           else if (glassConfig.enabled && db > -18.0 && _recentDecibelReadings.first < -35.0) {
             double confidence = 0.86;
             if (confidence >= glassConfig.threshold) {
@@ -222,7 +308,7 @@ class AIController {
             }
           }
         } catch (e) {
-          debugPrint("Acoustic monitor tick error: $e");
+          debugPrint("Acoustic monitor tick warning: $e");
         }
       });
 
@@ -232,19 +318,25 @@ class AIController {
         metric: "${currentDecibels.toStringAsFixed(1)} dBFS",
       );
 
-      return true;
+      return SafetyEarStartResult(success: true);
     } catch (e) {
       debugPrint("Failed to start acoustic monitor: $e");
       isVoiceMonitorActive = false;
-      return false;
+      return SafetyEarStartResult(
+        success: false,
+        errorMessage: "Failed to start Safety Ear: $e",
+      );
     }
   }
 
   Future<void> stopAcousticMonitor() async {
     isVoiceMonitorActive = false;
     _acousticTimer?.cancel();
+    _acousticTimer = null;
     try {
-      if (await _audioRecorder.isRecording()) await _audioRecorder.stop();
+      if (_audioRecorder != null && await _audioRecorder!.isRecording()) {
+        await _audioRecorder!.stop();
+      }
     } catch (_) {}
     currentEarSummary = "Safety Ear Standby";
   }
@@ -262,6 +354,7 @@ class AIController {
       visualGuardStatus = "Camera permission denied";
       return false;
     }
+
     isVisualGuardActive = true;
     visualGuardStatus = "Analyzing video frames for weapons, gestures & followers";
     _trackedPersonFrameCount = 0;
@@ -361,13 +454,17 @@ class AIController {
         }
       }
     } else {
-      if (_trackedPersonFrameCount > 0) _trackedPersonFrameCount--;
-      if (_trackedPersonFrameCount == 0) _trackingStartTime = null;
+      if (_trackedPersonFrameCount > 0) {
+        _trackedPersonFrameCount--;
+        if (_trackedPersonFrameCount <= 0) {
+          _trackingStartTime = null;
+        }
+      }
     }
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 3. MINUTE-BY-MINUTE SUMMARY TIMELINE
+  // 3. MINUTE-BY-MINUTE SUMMARY TIMERS
   // ─────────────────────────────────────────────────────────────
   void _startMinuteSummaryEngine() {
     _minuteSummaryTimer?.cancel();
@@ -521,7 +618,6 @@ class AIController {
   void _scheduleAutomaticEscalation(IncidentRecord incident) {
     _activeEscalationTimer?.cancel();
     _countdownTicker?.cancel();
-
     pendingCountdownSeconds = incident.timeoutSeconds;
 
     _countdownTicker = Timer.periodic(const Duration(seconds: 1), (ticker) {
