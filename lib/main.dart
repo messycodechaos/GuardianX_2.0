@@ -184,52 +184,66 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
           ),
           FadeTransition(
             opacity: _fadeAnimation,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  "GUARDIAN X",
-                  style: TextStyle(
-                    fontSize: 52,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 18,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(color: Colors.cyanAccent.withOpacity(0.7), blurRadius: 25),
-                      const Shadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 10),
-                    ],
-                  ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Spacer(),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        "GUARDIAN X",
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 42,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 10,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(color: Colors.cyanAccent.withOpacity(0.7), blurRadius: 25),
+                            const Shadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 10),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        "ENCRYPTED SAFETY PROTOCOL v3.0",
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 4,
+                          color: Colors.cyanAccent.withOpacity(0.9),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      width: 160,
+                      height: 2,
+                      child: const LinearProgressIndicator(
+                        backgroundColor: Colors.white10,
+                        color: Colors.cyanAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      "ESTABLISHING SECURE CLOUD LINK",
+                      style: TextStyle(
+                        color: Colors.white30,
+                        fontSize: 8,
+                        letterSpacing: 2.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  "ENCRYPTED SAFETY PROTOCOL v3.0",
-                  style: TextStyle(
-                    fontSize: 9,
-                    letterSpacing: 6,
-                    color: Colors.cyanAccent.withOpacity(0.9),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 100),
-                Container(
-                  width: 180,
-                  height: 1,
-                  child: const LinearProgressIndicator(
-                    backgroundColor: Colors.white10,
-                    color: Colors.cyanAccent,
-                  ),
-                ),
-                const SizedBox(height: 15),
-                const Text(
-                  "ESTABLISHING SECURE CLOUD LINK",
-                  style: TextStyle(
-                    color: Colors.white30,
-                    fontSize: 7,
-                    letterSpacing: 3,
-                  ),
-                ),
-                const SizedBox(height: 60),
-              ],
+              ),
             ),
           ),
         ],

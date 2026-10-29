@@ -10,9 +10,13 @@ class VideoRecordService {
 
   MediaRecorder? _mediaRecorder;
 
+  // EXPOSE LAST RECORDED VIDEO PATH FOR VAULT & UNATTENDED STREAM
+  String? lastRecordedVideoPath;
+
   Future<String> _getFolderPath() async {
     Directory? baseDir = await getExternalStorageDirectory();
-    String newPath = "${baseDir!.path}/GuardianX/Video";
+    baseDir ??= await getApplicationDocumentsDirectory();
+    String newPath = "${baseDir.path}/GuardianX/Video";
     Directory(newPath).createSync(recursive: true);
     return newPath;
   }
@@ -22,15 +26,13 @@ class VideoRecordService {
       final folder = await _getFolderPath();
       final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final String filePath = '$folder/VID_$timestamp.mp4';
-
+      lastRecordedVideoPath = filePath; // <-- STORE PATH
       _mediaRecorder = MediaRecorder();
-
       // Start recording the first video track from the stream
       await _mediaRecorder!.start(
         filePath,
         videoTrack: stream.getVideoTracks().first,
       );
-
       print("🎥 Background Video Started: $filePath");
     } catch (e) {
       print("Video Service Error: $e");
@@ -39,9 +41,13 @@ class VideoRecordService {
 
   Future<void> stopVideoRecording() async {
     if (_mediaRecorder != null) {
-      await _mediaRecorder!.stop();
-      _mediaRecorder = null;
-      print("✅ Video Saved to Gallery folder.");
+      try {
+        await _mediaRecorder!.stop();
+        _mediaRecorder = null;
+        print("✅ Video Saved: $lastRecordedVideoPath");
+      } catch (e) {
+        print("Stop Video Error: $e");
+      }
     }
   }
 }

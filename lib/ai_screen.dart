@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'ai_controller.dart';
 import 'fake_call_screen.dart';
 import 'app_theme.dart';
 import 'sos_model.dart';
-
+import 'dart:io';
+import 'dart:typed_data';
 class AIScreen extends StatefulWidget {
   final List<EmergencyContact>? contacts;
   final List<SOSLevel>? levels;
@@ -31,6 +33,99 @@ class _AIScreenState extends State<AIScreen> {
     });
   }
 
+
+  void _showCapturedFrameModal(Map<String, dynamic> log) {
+    final String? imagePath = log['imagePath'];
+    final Uint8List? imageBytes = log['imageBytes'];
+    final bool hasFile = imagePath != null && File(imagePath).existsSync();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.camera, color: AppTheme.azure, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              "Captured Frame (${log['timestamp']})",
+              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 240,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: hasFile
+                    ? Image.file(
+                  File(imagePath),
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, err, stack) => imageBytes != null
+                      ? Image.memory(imageBytes, fit: BoxFit.cover)
+                      : const SizedBox.shrink(),
+                )
+                    : (imageBytes != null && imageBytes.isNotEmpty)
+                    ? Image.memory(imageBytes, fit: BoxFit.cover)
+                    : const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.videocam_outlined, size: 48, color: AppTheme.azure),
+                      SizedBox(height: 8),
+                      Text("Visual Perception Frame", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 4),
+                      Text("Frame scanned for contours & followers", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              log['summary'] ?? '',
+              style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black38,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Frame Scan Status:", style: TextStyle(color: Colors.white60, fontSize: 11)),
+                  Text(
+                    log['metric'] ?? 'Nominal',
+                    style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Close", style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
   void _refreshRadarStatus() async {
     final res = await ai.getLiveSafetyScore();
     if (mounted) {
@@ -679,9 +774,34 @@ class _AIScreenState extends State<AIScreen> {
                           "👁️ Visual Perimeter Status:",
                           style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
-                        Text(
-                          ai.visualGuardStatus,
-                          style: const TextStyle(color: AppTheme.azure, fontSize: 11, fontWeight: FontWeight.w600),
+                        Row(
+                          children: [
+                            Text(
+                              ai.visualGuardStatus,
+                              style: const TextStyle(color: AppTheme.azure, fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () async {
+                                await ai.switchCamera();
+                                setState(() {});
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.azure.withOpacity(0.15),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppTheme.azure.withOpacity(0.5), width: 1),
+                                ),
+                                child: const Icon(
+                                  Icons.cameraswitch_rounded,
+                                  color: AppTheme.azure,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -691,6 +811,92 @@ class _AIScreenState extends State<AIScreen> {
                       style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
                     ),
                   ],
+                ),
+              ),
+
+            // LIVE SAFETY EYE CAMERA VIEWPORT WITH FLIP CAMERA OVERLAY
+            if (ai.isVisualGuardActive && ai.localVideoRenderer != null)
+              Container(
+                height: 220,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.azure.withOpacity(0.5), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.azure.withOpacity(0.15),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: Stack(
+                    children: [
+                      RTCVideoView(
+                        ai.localVideoRenderer!,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        mirror: ai.currentFacingMode == 'user',
+                      ),
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: GestureDetector(
+                          onTap: () async {
+                            await ai.switchCamera();
+                            setState(() {});
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppTheme.azure, width: 1.2),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 4),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.cameraswitch_rounded, color: AppTheme.azure, size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Flip (${ai.currentFacingMode == 'user' ? 'Front' : 'Rear'})",
+                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 10,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.redAccent.withOpacity(0.6), width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 6),
+                              const Text("LIVE SAFETY EYE AI SCAN", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -872,6 +1078,9 @@ class _AIScreenState extends State<AIScreen> {
       itemCount: ai.perceptionLogs.length,
       itemBuilder: (context, idx) {
         final log = ai.perceptionLogs[idx];
+        final String? imagePath = log['imagePath'];
+        final bool hasFrame = (imagePath != null && File(imagePath).existsSync()) || log['imageBytes'] != null;
+
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -905,23 +1114,143 @@ class _AIScreenState extends State<AIScreen> {
                           ),
                         ),
                         Text(
-                          log['timestamp'],
+                          log['timestamp'] ?? '',
                           style: const TextStyle(color: Colors.white38, fontSize: 11),
                         ),
                       ],
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      log['summary'],
+                      log['summary'] ?? '',
                       style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11, height: 1.3),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (log['source'] == 'safety_eye') ...[
+                          _buildContrastBadge(
+                            label: "👤 Persons: ${log['personCount'] ?? 0}",
+                            backgroundColor: const Color(0xFF0EA5E9).withOpacity(0.2),
+                            borderColor: const Color(0xFF0EA5E9),
+                            textColor: const Color(0xFF38BDF8),
+                          ),
+                          if ((log['weaponCount'] ?? 0) > 0)
+                            _buildContrastBadge(
+                              label: "⚠️ Weapon: ${log['weaponCount']}",
+                              backgroundColor: Colors.redAccent.withOpacity(0.25),
+                              borderColor: Colors.redAccent,
+                              textColor: const Color(0xFFFCA5A5),
+                            )
+                          else
+                            _buildContrastBadge(
+                              label: "✓ Clear",
+                              backgroundColor: const Color(0xFF10B981).withOpacity(0.2),
+                              borderColor: const Color(0xFF10B981),
+                              textColor: const Color(0xFF34D399),
+                            ),
+                        ] else ...[
+                          _buildContrastBadge(
+                            label: "🔊 ${log['metric'] ?? ''}",
+                            backgroundColor: Colors.amber.withOpacity(0.2),
+                            borderColor: Colors.amber,
+                            textColor: const Color(0xFFFCD34D),
+                          ),
+                          _buildContrastBadge(
+                            label: log['category'] == 'distress'
+                                ? "🚨 ${log['dominantSound'] ?? 'Distress'}"
+                                : "🎵 ${log['dominantSound'] ?? 'Ambient'}",
+                            backgroundColor: log['category'] == 'distress'
+                                ? Colors.redAccent.withOpacity(0.25)
+                                : Colors.cyan.withOpacity(0.2),
+                            borderColor: log['category'] == 'distress'
+                                ? Colors.redAccent
+                                : Colors.cyan,
+                            textColor: log['category'] == 'distress'
+                                ? const Color(0xFFFCA5A5)
+                                : const Color(0xFF67E8F9),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
               ),
+
+              // ── CAPTURED FRAME THUMBNAIL ──
+              if (log['source'] == 'safety_eye') ...[
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: () => _showCapturedFrameModal(log),
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.azure.withOpacity(0.5), width: 1.2),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(7),
+                          child: hasFrame
+                              ? (imagePath != null && File(imagePath).existsSync()
+                              ? Image.file(File(imagePath), fit: BoxFit.cover)
+                              : Image.memory(log['imageBytes']!, fit: BoxFit.cover))
+                              : Container(
+                            color: const Color(0xFF0F172A),
+                            child: const Center(
+                              child: Icon(Icons.camera_alt, color: AppTheme.azure, size: 20),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 2,
+                        right: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Icon(Icons.fullscreen, color: Colors.white, size: 10),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildContrastBadge({
+    required String label,
+    required Color backgroundColor,
+    required Color borderColor,
+    required Color textColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 

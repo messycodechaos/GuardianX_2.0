@@ -86,7 +86,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   final _searchController = TextEditingController();
   final _searchFocus      = FocusNode();
 
-  LatLng?             _currentLocation;
+  LatLng?             _currentLocation = const LatLng(28.6139, 77.2090);
   LatLng?             _destination;
   String              _destinationLabel = '';
   List<RouteModel>    _routes           = [];
@@ -96,7 +96,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   List<GeocodeResult> _suggestions      = [];
   String              _activeCategory   = PoiCategory.all;
 
-  bool    _locating      = true;
+  bool    _locating      = false;
   bool    _loadingRoutes = false;
   bool    _loadingPois   = false;
   bool    _firstFix      = true;
@@ -123,25 +123,60 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   // ── LOCATION ─────────────────────────────────────────────
   Future<void> _initLocation() async {
+    // Immediately load map & POIs for current location without blocking with loading spinner
+    if (_firstFix && _currentLocation != null) {
+      _loadPois(_currentLocation!);
+    }
+
     try {
       bool svc = await Geolocator.isLocationServiceEnabled();
-      if (!svc) throw Exception('Location services are disabled.');
+      if (!svc) {
+        final pos = await Geolocator.getLastKnownPosition();
+        if (pos != null) {
+          _onLocationUpdate(pos);
+        } else {
+          final fallbackLoc = _currentLocation ?? const LatLng(28.6139, 77.2090);
+          if (mounted) setState(() { _currentLocation = fallbackLoc; _locating = false; });
+          if (_firstFix) {
+            _firstFix = false;
+            _mapController.move(fallbackLoc, 14.0);
+            _loadPois(fallbackLoc);
+          }
+        }
+        return;
+      }
 
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
-        if (perm == LocationPermission.denied) {
-          throw Exception('Location permission denied.');
-        }
-      }
-      if (perm == LocationPermission.deniedForever) {
-        throw Exception('Location permission permanently denied.');
       }
 
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      _onLocationUpdate(pos);
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 3),
+        );
+      } catch (_) {
+        pos = await Geolocator.getLastKnownPosition();
+      }
+
+      if (pos != null) {
+        _onLocationUpdate(pos);
+      } else {
+        final fallbackLoc = _currentLocation ?? const LatLng(28.6139, 77.2090);
+        if (mounted) {
+          setState(() {
+            _currentLocation = fallbackLoc;
+            _locating = false;
+          });
+        }
+        if (_firstFix) {
+          _firstFix = false;
+          _mapController.move(fallbackLoc, 14.0);
+          _loadPois(fallbackLoc);
+        }
+      }
 
       _locationSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -156,12 +191,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
+  bool _hasRealGpsFix = false;
+
   void _onLocationUpdate(Position pos) {
     final loc = LatLng(pos.latitude, pos.longitude);
-    setState(() { _currentLocation = loc; _locating = false; });
+    final isFirstRealFix = !_hasRealGpsFix;
+    _hasRealGpsFix = true;
 
-    if (_firstFix) {
-      _firstFix = false;
+    if (mounted) {
+      setState(() {
+        _currentLocation = loc;
+        _locating = false;
+      });
+    }
+
+    if (isFirstRealFix) {
       _mapController.move(loc, 15.0);
       _loadPois(loc);
     }
